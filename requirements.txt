@@ -1,0 +1,5 @@
+Flask
+line-bot-sdk
+python-docx
+docx2pdf
+boto3
