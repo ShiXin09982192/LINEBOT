@@ -1,5 +1,5 @@
-Flask
-line-bot-sdk
-python-docx
-docx2pdf
-boto3
+Flask==2.2.5
+line-bot-sdk==2.4.2
+python-docx==0.8.11
+boto3==1.34.67
+reportlab==4.1.0
