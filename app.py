@@ -1,7 +1,9 @@
-import os, re, tempfile
+import os
+import re
+import tempfile
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
-from linebot.models import TextSendMessage, MessageEvent, TextMessage
+from linebot.models import MessageEvent, TextMessage, TextSendMessage
 from docx import Document
 from docx2pdf import convert
 import boto3
@@ -30,15 +32,14 @@ def parse_text(text):
     data = {'owner': '', 'address': '', 'items': []}
     for l in lines:
         if l.startswith('業主：'):
-            data['owner'] = l.split('：', 1)[1].strip()
+            data['owner'] = l.split('：',1)[1].strip()
         elif l.startswith('地址：'):
-            data['address'] = l.split('：', 1)[1].strip()
-        else:
-            m = re.match(r'([A-Za-z0-9]+)[\.\:\s]+(.+?)[\：\s]+([\d,]+)', l)
-            if m:
-                code, desc, amt = m.groups()
-                amt = int(amt.replace(',', ''))
-                data['items'].append((desc.strip(), amt))
+            data['address'] = l.split('：',1)[1].strip()
+        m = re.match(r'([A-Za-z0-9]+)[\.\:\s]+(.+?)[\：\s]+([\d,]+)', l)
+        if m:
+            code, desc, amt = m.groups()
+            amt = int(amt.replace(',', ''))
+            data['items'].append((desc.strip(), amt))
     total = sum(amt for _, amt in data['items'])
     tax = int(total * 0.05)
     data.update({'total': total, 'tax': tax, 'grand_total': total + tax})
@@ -73,7 +74,7 @@ def upload_and_get_url(file_path, key):
 
 @app.route("/callback", methods=['POST'])
 def callback():
-    signature = request.headers['X-Line-Signature']
+    signature = request.headers.get('X-Line-Signature')
     body = request.get_data(as_text=True)
     try:
         handler.handle(body, signature)
@@ -83,7 +84,6 @@ def callback():
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
-    user_id = event.source.user_id
     text = event.message.text
     data = parse_text(text)
     with tempfile.TemporaryDirectory() as tmp:
@@ -95,10 +95,8 @@ def handle_message(event):
         key_pdf = os.path.basename(pdf_path)
         url_docx = upload_and_get_url(docx_path, key_docx)
         url_pdf = upload_and_get_url(pdf_path, key_pdf)
-    msg = (f'報價單已生成：\n'
-           f'📄 PDF：{url_pdf}\n'
-           f'📝 Word：{url_docx}')
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=msg))
+    reply_text = f'報價單已生成：\n📄 PDF：{url_pdf}\n📝 Word：{url_docx}'
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
 if __name__ == "__main__":
-    app.run(port=8000)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
