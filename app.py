@@ -1,7 +1,7 @@
 import os, re, tempfile
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
-from linebot.models import MessageEvent, TextMessage, TextSendMessage
+from linebot.models import TextSendMessage, MessageEvent, TextMessage
 from docx import Document
 from docx2pdf import convert
 import boto3
@@ -33,11 +33,12 @@ def parse_text(text):
             data['owner'] = l.split('：', 1)[1].strip()
         elif l.startswith('地址：'):
             data['address'] = l.split('：', 1)[1].strip()
-        m = re.match(r'([A-Za-z0-9]+)[\.\:\s]+(.+?)[\：\s]+([\d,]+)', l)
-        if m:
-            code, desc, amt = m.groups()
-            amt = int(amt.replace(',', ''))
-            data['items'].append((desc.strip(), amt))
+        else:
+            m = re.match(r'([A-Za-z0-9]+)[\.\:\s]+(.+?)[\：\s]+([\d,]+)', l)
+            if m:
+                code, desc, amt = m.groups()
+                amt = int(amt.replace(',', ''))
+                data['items'].append((desc.strip(), amt))
     total = sum(amt for _, amt in data['items'])
     tax = int(total * 0.05)
     data.update({'total': total, 'tax': tax, 'grand_total': total + tax})
@@ -46,13 +47,9 @@ def parse_text(text):
 def fill_docx(data, out_docx_path):
     doc = Document('template.docx')
     table = doc.tables[0]
-
-    # 清除除了表頭以外的所有行
     for row in table.rows[1:]:
         for cell in row.cells:
             cell.text = ''
-
-    # 寫入品項
     for i, (desc, amt) in enumerate(data['items'], start=1):
         row = table.add_row().cells
         row[0].text = str(i)
@@ -60,12 +57,9 @@ def fill_docx(data, out_docx_path):
         row[2].text = '1'
         row[3].text = '式'
         row[4].text = f'{amt:,}'
-
-    # 總金額資訊
     doc.add_paragraph(f'合計：{data["total"]:,}')
     doc.add_paragraph(f'營業稅（5%）：{data["tax"]:,}')
     doc.add_paragraph(f'總計：{data["grand_total"]:,}')
-
     doc.save(out_docx_path)
 
 def upload_and_get_url(file_path, key):
@@ -79,40 +73,32 @@ def upload_and_get_url(file_path, key):
 
 @app.route("/callback", methods=['POST'])
 def callback():
-    signature = request.headers.get('X-Line-Signature')
+    signature = request.headers['X-Line-Signature']
     body = request.get_data(as_text=True)
-
     try:
         handler.handle(body, signature)
     except Exception as e:
         abort(400)
-
     return 'OK'
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
+    user_id = event.source.user_id
     text = event.message.text
     data = parse_text(text)
-
     with tempfile.TemporaryDirectory() as tmp:
-        docx_path = os.path.join(tmp, f'報價單_{datetime.now().strftime("%Y%m%d%H%M%S")}.docx')
+        docx_path = os.path.join(tmp, f'报价单_{datetime.now().strftime("%Y%m%d%H%M%S")}.docx')
         pdf_path = docx_path.replace('.docx', '.pdf')
-
         fill_docx(data, docx_path)
         convert(docx_path, pdf_path)
-
         key_docx = os.path.basename(docx_path)
         key_pdf = os.path.basename(pdf_path)
-
         url_docx = upload_and_get_url(docx_path, key_docx)
         url_pdf = upload_and_get_url(pdf_path, key_pdf)
-
     msg = (f'報價單已生成：\n'
            f'📄 PDF：{url_pdf}\n'
            f'📝 Word：{url_docx}')
-
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=msg))
 
 if __name__ == "__main__":
     app.run(port=8000)
-
