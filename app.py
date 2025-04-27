@@ -2,25 +2,16 @@ from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
-import os
 
 app = Flask(__name__)
 
-# 從環境變數讀取 LINE 資訊
-LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
-LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET')
-
-line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
-handler = WebhookHandler(LINE_CHANNEL_SECRET)
-
-@app.route("/", methods=['GET'])
-def home():
-    return "Hello, Railway! LINE Bot is Running."
+# 填入你的 Access Token 和 Secret
+line_bot_api = LineBotApi('Pe6bx9AYP13n2EW/2LRZjE+9iGYIB9cCJMBZRzLNsUKgXRCHVy9Xu39A76P12PZlGbWKin/J2LCy/MKhv+y/efExrBrcn1/Qd/kMzroF/agvzYYHX5kv9cutg/O2gAylzxZ/Xnj/TdAqo3xm7IvXqwdB04t89/1O/w1cDnyilFU=')
+handler = WebhookHandler('787cbcef88855b0b27853dcb7a7b0651')
 
 @app.route("/callback", methods=['POST'])
 def callback():
     signature = request.headers['X-Line-Signature']
-
     body = request.get_data(as_text=True)
 
     try:
@@ -32,12 +23,20 @@ def callback():
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
-    user_message = event.message.text
+    incoming = event.message.text
+
+    # 簡單關鍵字判斷
+    if incoming.lower() == "今天排程":
+        reply = "今天要去：XX大樓、YY大廈維修！"
+    elif incoming.lower().startswith("完成"):
+        reply = "好的，已記錄完成。"
+    else:
+        reply = f"你說了：{incoming}"
+
     line_bot_api.reply_message(
         event.reply_token,
-        TextSendMessage(text=f"你說的是：{user_message}")
+        TextSendMessage(text=reply)
     )
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8000))
-    app.run(host="0.0.0.0", port=port)
+    app.run()
